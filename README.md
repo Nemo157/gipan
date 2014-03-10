@@ -6,7 +6,7 @@ A simple API generator for turning a set of DataMapper resources into a Sinatra 
 WARNING
 -------
 
-GipAN is currently in a pre-release state Semantic Versioning will **not** be
+GipAN is currently in a pre-release state, Semantic Versioning will **not** be
 used until the v1.0 release. There may even be major changes with no version
 bump.
 
