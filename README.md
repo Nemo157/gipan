@@ -31,11 +31,14 @@ module Blog
       entity.class_eval do
         include GipAN::Resource
         
-        property :id, entity::Serial
-        property :created_at, DateTime,
-            writer: :protected
-        property :updated_at, DateTime,
-            writer: :protected
+        # Only properties with public writers will be parsed out of entity
+        # creation/update requests
+        property :id, entity::Serial, writer: :protected
+        property :created_at, DateTime, writer: :protected
+        property :updated_at, DateTime, writer: :protected
+        
+        # Similarly properties with non-public readers will not be
+        # returned in entity retrieval requests
         property :deleted_at, entity::ParanoidDateTime,
             writer: :protected, reader: :protected
       end
