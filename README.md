@@ -45,11 +45,16 @@ module Blog
     property :body, Text
   end
   
-  class Root < GipAN::Api
+  class Api < GipAN::Api
+    root_path 'api'
+    
     resource Post
     resource Comment
-    
-    root_path 'api'
   end
 end
+
+DataMapper.finalize
+DataMapper.auto_upgrade!
+Blog::Api.finalize
+run Blog::Api
 ````
