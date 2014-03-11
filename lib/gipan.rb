@@ -171,6 +171,20 @@ module GipAN
           end
         end
 
+        api.delete "#{entity_uri}.?:format?" do
+          entity = yield(params).get(params["#{singular_name}_id".to_sym])
+          if entity
+            if entity.destroy
+              status 204
+            else
+              status 409
+              # TODO: return messages about why the entity could not be destroyed
+            end
+          else
+            halt 404
+          end
+        end
+
         api.post "#{collection_uri}.?:format?" do
           data = JSON.parse request.body.read
           entity = yield(params).create(Hash[
