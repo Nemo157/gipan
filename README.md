@@ -18,7 +18,7 @@ API is likely stable.
 Example
 -------
 
-Blog based examples are a required part of a Ruby web gem right?
+Blog based examples are a required part of a Ruby web gem, right?
 
 ````ruby
 require 'gipan'
