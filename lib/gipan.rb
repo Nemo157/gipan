@@ -184,6 +184,8 @@ module GipAN
               end
             end.compact
           ])
+          status 201
+          headers 'Location' => entity.uri(uri, format)
           render(entity.representation(uri, format, false))
         end
       end
