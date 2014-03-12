@@ -227,8 +227,8 @@ module GipAN
       end
     end
 
-    def self.create_api root_path
-      get "/#{root_path}.?:format?" do
+    def self.create_api
+      get "/root.?:format?" do
         render(representation(false))
       end
 
@@ -241,14 +241,14 @@ module GipAN
       end
 
       resources.each do |resource|
-        create_resource self, resource, "/#{root_path}/" do |params|
+        create_resource self, resource, "/" do |params|
           resource.all
         end
       end
     end
 
     def self.finalize
-      create_api root_path
+      create_api
       self
     end
 
@@ -262,31 +262,19 @@ module GipAN
     end
 
     def uri root = nil, ext = nil
-      uri = self.class.uri root, ext
-      unless uri
-        self.class.uri = "#{request.scheme}://#{request.host}#{request.port ? ":#{request.port}" : ""}#{root_path ? "/#{root_path}" : ""}"
+      root_uri = self.class.uri
+      unless root_uri
+        root_uri = self.class.uri = "#{request.scheme}://#{request.host}#{request.port ? ":#{request.port}" : ""}#{request.script_name}"
       end
-      uri || self.class.uri("", ext)
+      "#{root_uri}/root#{ext && ".#{ext}"}"
     end
 
-    def self.uri root = nil, ext = nil
-      @uri && "#{@uri}#{ext && ".#{ext}"}"
+    def self.uri root = nil
+      @uri
     end
 
     def self.uri= value
       @uri = value
-    end
-
-    def root_path
-      self.class.root_path
-    end
-
-    def self.root_path value=nil
-      if value
-        @root_path = value.gsub(/^\/|\/$/, '')
-      else
-        @root_path
-      end
     end
 
     def self.resource resource
