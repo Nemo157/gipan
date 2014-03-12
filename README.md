@@ -78,8 +78,6 @@ module Blog
   # We could have not added the resource here and it would only be available as
   # a sub-resource on a post.
   class Api < GipAN::Api
-    root_path 'api'
-    
     resource Post
     resource Comment
   end
@@ -90,5 +88,7 @@ end
 DataMapper.finalize
 DataMapper.auto_upgrade!
 Blog::Api.finalize
-run Blog::Api
+map '/api' do
+  run Blog::Api
+end
 ````
