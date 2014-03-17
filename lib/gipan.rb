@@ -261,10 +261,17 @@ module GipAN
       }
     end
 
+    def calc_port scheme
+      return case scheme
+      when 'http'; 80
+      when 'https'; 443
+      end
+    end
+
     def uri root = nil, ext = nil
       root_uri = self.class.uri
       unless root_uri
-        root_uri = self.class.uri = "#{request.scheme}://#{request.host}#{request.port ? ":#{request.port}" : ""}#{request.script_name}"
+        root_uri = self.class.uri = "#{request.scheme}://#{request.host}#{request.port != calc_port(request.scheme)? ":#{request.port}" : ""}#{request.script_name}"
       end
       "#{root_uri}/root#{ext && ".#{ext}"}"
     end
