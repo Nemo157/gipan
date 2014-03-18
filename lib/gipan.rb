@@ -27,7 +27,7 @@ module GipAN
       </html>
     END
   end
-  FormatRegex = /(?:\.(?<format>[^\.\\]+))?/
+  FormatRegex = /(?:\.(?<format>[^\.\/]+))?/
 
   module Resource
     def self.included klass
@@ -138,7 +138,7 @@ module GipAN
     def self.create_resource api, resource, root_path, plural_name = resource.plural_name, singular_name = resource.singular_name
       resource.api = self
       collection_uri = "#{root_path}#{plural_name}"
-      entity_uri = "#{root_path}#{plural_name}\/(?<#{singular_name}_id>[^\.\\\\]+)"
+      entity_uri = "#{root_path}#{plural_name}\/(?<#{singular_name}_id>[^\.\\\/]+)"
 
       api.get(/^#{collection_uri}#{FormatRegex}$/) do
         entities = yield(params)
