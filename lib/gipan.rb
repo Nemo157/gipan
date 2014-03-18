@@ -9,7 +9,7 @@ module GipAN
     object_nl: "\n",
     array_nl: "\n",
   }
-  UrlRegex = /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=\+\$,\w]+@)?[A-Za-z0-9.-]+(:[0-9]+)?|(?:www.|[-;:&=\+\$,\w]+@)[A-Za-z0-9.-]+)((?:\/[\+~%\/.\w-_]*)?\??(?:[-\+=&;%@.\w_]*)#?(?:[\w]*))?)/
+  UrlRegex = /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=\+\$,\w]+@)?[A-Za-z0-9.-]+(:[0-9]+)?|(?:www.|[-;:&=\+\$,\w]+@)[A-Za-z0-9.-]+)((?:\/[\+~%\/.\w-]*)?\??(?:[-\+=&;%@.\w]*)#?(?:[\w]*))?)/
   UrlTemplate = -> url do
     %Q{<a href="#{Rack::Utils.escape_html(url)}">#{Rack::Utils.escape_html(url)}</a>}
   end
@@ -27,6 +27,7 @@ module GipAN
       </html>
     END
   end
+  FormatRegex = /(?:\.(?<format>[^\.\\]+))?/
 
   module Resource
     def self.included klass
@@ -49,7 +50,7 @@ module GipAN
             repr[property.name] = property.get(self)
           end
           relationships.select { |relationship| relationship.reader_visibility == :public }.each do |relationship|
-            repr[relationship.name] = if embed
+            repr[relationship.name] = relationship.get(self) && if embed
               relationship.get(self).representation(root, ext, embed)
             else
               { uri: relationship.get(self).uri(root, ext) }
@@ -65,7 +66,7 @@ module GipAN
       attr_accessor :api
 
       def singular_name
-        name.split('::').last.downcase
+        name.split('::').last.gsub(/(?!^)[A-Z]/, '_\0').downcase
       end
 
       def plural_name
@@ -75,7 +76,11 @@ module GipAN
       def belongs_to *args
         super.tap do |relationship|
           define_method :base do
-            relationship.get(self).public_send relationship.inverse.name
+            if relationship.get(self).respond_to? relationship.inverse.name
+              relationship.get(self).public_send relationship.inverse.name
+            else
+              super()
+            end
           end
         end
       end
@@ -133,14 +138,14 @@ module GipAN
     def self.create_resource api, resource, root_path, plural_name = resource.plural_name, singular_name = resource.singular_name
       resource.api = self
       collection_uri = "#{root_path}#{plural_name}"
-      entity_uri = "#{root_path}#{plural_name}/:#{singular_name}_id"
+      entity_uri = "#{root_path}#{plural_name}\/(?<#{singular_name}_id>[^\.\\\\]+)"
 
-      api.get "#{collection_uri}.?:format?" do
+      api.get(/^#{collection_uri}#{FormatRegex}$/) do
         entities = yield(params)
         render(entities.representation(uri("", format), format, false))
       end
 
-      api.get "#{entity_uri}.?:format?" do
+      api.get(/^#{entity_uri}#{FormatRegex}$/) do
         entity = yield(params).get(params["#{singular_name}_id".to_sym])
         if entity
           render(entity.representation(uri("", format), format, false))
@@ -150,7 +155,7 @@ module GipAN
       end
 
       unless resource.respond_to? :abstract? and resource.abstract?
-        api.put "#{entity_uri}.?:format?" do
+        api.put(/^#{entity_uri}#{FormatRegex}$/) do
           entity = yield(params).get(params["#{singular_name}_id".to_sym])
           if entity
             data = api.parse_post request
@@ -171,7 +176,7 @@ module GipAN
           end
         end
 
-        api.delete "#{entity_uri}.?:format?" do
+        api.delete(/^#{entity_uri}#{FormatRegex}$/) do
           entity = yield(params).get(params["#{singular_name}_id".to_sym])
           if entity
             if entity.destroy
@@ -185,7 +190,7 @@ module GipAN
           end
         end
 
-        api.post "#{collection_uri}.?:format?" do
+        api.post(/^#{collection_uri}#{FormatRegex}$/) do
           data = JSON.parse request.body.read
           entity = yield(params).create(Hash[
             resource.properties.select { |property| property.writer_visibility == :public }.map do |property|
@@ -206,7 +211,7 @@ module GipAN
 
       resource.relationships.reject { |relationship| relationship.child_model == self.class }.each do |relationship|
         if relationship.max > 1
-          create_resource api, relationship.child_model, "#{entity_uri}/", relationship.name do |params|
+          create_resource api, relationship.child_model, "#{entity_uri}\/", relationship.name do |params|
             entity = yield(params).get(params[:"#{singular_name}_id"])
             if entity
               relationship.get(entity)
@@ -215,7 +220,7 @@ module GipAN
             end
           end
         else
-          api.get "#{entity_uri}/#{relationship.name}.?:format?" do
+          api.get(/#{entity_uri}\/#{Regexp.escape(relationship.name)}#{FormatRegex}/) do
             entity = yield(params).get(params["#{singular_name}_id".to_sym])
             if entity
               render(relationship.get(entity).representation(uri, format, false))
@@ -228,7 +233,7 @@ module GipAN
     end
 
     def self.create_api
-      get "/root.?:format?" do
+      get(/^\/root#{FormatRegex}$/) do
         render(representation(false))
       end
 
@@ -269,10 +274,7 @@ module GipAN
     end
 
     def uri root = nil, ext = nil
-      root_uri = self.class.uri
-      unless root_uri
-        root_uri = self.class.uri = "#{request.scheme}://#{request.host}#{request.port != calc_port(request.scheme)? ":#{request.port}" : ""}#{request.script_name}"
-      end
+      root_uri = self.class.uri = to('/').chomp('/')
       "#{root_uri}/root#{ext && ".#{ext}"}"
     end
 
