@@ -27,7 +27,7 @@ module GipAN
       </html>
     END
   end
-  FormatRegex = /(?:\.(?<format>[^\.\/]+))?/
+  FormatRegex = /(?:\.(?<format>[^\/]+))?/
 
   module Resource
     def self.included klass
