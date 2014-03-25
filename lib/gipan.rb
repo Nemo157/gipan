@@ -126,9 +126,13 @@ module GipAN
       "#{base.uri root}/#{id}#{ext && ".#{ext}"}"
     end
 
+    def min_representation root, ext
+      { uri: uri(root, ext) }
+    end
+
     def representation root, ext, embed
       if valid?
-        { uri: uri(root, ext) }.tap do |repr|
+        min_representation(root, ext).tap do |repr|
           properties.select { |property| property.reader_visibility == :public }.each do |property|
             repr[property.name] = property.get(self)
           end
@@ -137,15 +141,17 @@ module GipAN
               repr[finder[:name]] = found && if embed
                 found.representation(root, ext, embed)
               else
-                { uri: found.uri(root, ext) }
+                found.min_representation(root, ext)
               end
             end
           end
           relationships.select { |relationship| relationship.reader_visibility == :public }.each do |relationship|
-            repr[relationship.name] = relationship.get(self) && if embed
-              relationship.get(self).representation(root, ext, embed)
-            else
-              { uri: relationship.get(self).uri(root, ext) }
+            relationship.get(self).tap do |found|
+              repr[relationship.name] = found && if embed
+                found.representation(root, ext, embed)
+              else
+                found.min_representation(root, ext)
+              end
             end
           end
         end
@@ -230,9 +236,17 @@ module GipAN
           "#{base.uri root}/#{plural_name}#{ext && ".#{ext}"}"
         end
 
+        def min_representation root, ext
+          {
+            uri: uri(root, ext),
+            count: length
+          }
+        end
+
         def representation root, ext, embed
           {
             uri: uri(root, ext),
+            count: length,
             items: map { |item| item.representation(root, ext, embed) }
           }
         end
