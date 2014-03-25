@@ -3,6 +3,89 @@ require 'sinatra'
 require 'data_mapper'
 
 module GipAN
+  module Finders
+    DataMapper::Model.append_extensions self
+
+    def self.extended(model)
+      model.send :include, InstanceMethods
+      model.instance_variable_set(:@finders, {})
+      super
+    end
+
+    def inherited(model)
+      model.instance_variable_set(:@finders, {})
+
+      @finders.each do |repository_name, finders|
+        model_finders = model.finders(repository_name)
+        finders.each { |finder| model_finders << finder }
+      end
+
+      super
+    end
+
+    def finders(repository_name = default_repository_name)
+      default_repository_name = self.default_repository_name
+
+      @finders[repository_name] ||= if repository_name == default_repository_name
+        []
+      else
+        finders(default_repository_name).dup
+      end
+    end
+
+    def associated_set name, model, &block
+      name    = name.to_sym
+      model   = model
+
+      repository_name = repository.name
+
+      finder = {
+        name: name,
+        model: model,
+        block: block,
+        many: true
+      }
+
+      finders(repository_name) << finder
+      descendants.each do |descendant|
+        descendant.finders(repository_name) << finder
+      end
+
+      create_finder_reader(finder)
+
+      finder
+    end
+
+    def create_finder_reader(finder)
+      name        = finder[:name]
+      reader_name = name.to_s
+
+      return if method_defined?(reader_name)
+
+      finder_module.module_exec do
+        define_method reader_name do
+          finder.block[self]
+        end
+      end
+    end
+
+    def finder_module
+      @finder_module ||= begin
+        mod = Module.new
+        class_eval do
+          include mod
+        end
+        mod
+      end
+    end
+
+    module InstanceMethods
+      def finders
+        model.finders(repository_name)
+      end
+    end
+  end
+
   PrettyJsonOptions = {
     indent: '  ',
     space: ' ',
@@ -49,6 +132,15 @@ module GipAN
           properties.select { |property| property.reader_visibility == :public }.each do |property|
             repr[property.name] = property.get(self)
           end
+          finders.each do |finder|
+            finder[:block][self].tap do |found|
+              repr[finder[:name]] = found && if embed
+                found.representation(root, ext, embed)
+              else
+                { uri: found.uri(root, ext) }
+              end
+            end
+          end
           relationships.select { |relationship| relationship.reader_visibility == :public }.each do |relationship|
             repr[relationship.name] = relationship.get(self) && if embed
               relationship.get(self).representation(root, ext, embed)
@@ -93,6 +185,20 @@ module GipAN
           end
           relationship.define_singleton_method :get do |*inner_args|
             super(*inner_args).tap { |items| items.extend CollectionMethods; items.api = api }
+          end
+        end
+      end
+
+      def associated_set *args
+        super.tap do |finder|
+          block = finder[:block]
+          finder[:block] = proc do |parent|
+            block[parent].tap do |items|
+              items.extend CollectionMethods
+              items.api = api
+              items.define_singleton_method :plural_name do finder[:name] end
+              items.define_singleton_method :base do parent end
+            end
           end
         end
       end
@@ -227,6 +333,17 @@ module GipAN
             else
               halt 404
             end
+          end
+        end
+      end
+
+      resource.finders.each do |finder|
+        create_resource api, finder[:model], "#{entity_uri}\/", finder[:name] do |params|
+          entity = yield(params).get(params[:"#{singular_name}_id"])
+          if entity
+            finder[:block][entity]
+          else
+            halt 404
           end
         end
       end
