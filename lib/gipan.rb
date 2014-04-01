@@ -130,8 +130,8 @@ module GipAN
       { uri: uri(root, ext) }
     end
 
-    def representation root, ext, embed
-      if valid?
+    def representation root, ext, embed, context
+      if valid? context
         min_representation(root, ext).tap do |repr|
           properties.select { |property| property.reader_visibility == :public }.each do |property|
             repr[property.name] = property.get(self)
@@ -139,7 +139,7 @@ module GipAN
           finders.each do |finder|
             finder[:block][self].tap do |found|
               repr[finder[:name]] = found && if embed
-                found.representation(root, ext, embed)
+                found.representation(root, ext, embed, :default)
               else
                 found.min_representation(root, ext)
               end
@@ -148,7 +148,7 @@ module GipAN
           relationships.select { |relationship| relationship.reader_visibility == :public }.each do |relationship|
             relationship.get(self).tap do |found|
               repr[relationship.name] = found && if embed
-                found.representation(root, ext, embed)
+                found.representation(root, ext, embed, :default)
               else
                 found.min_representation(root, ext)
               end
@@ -243,11 +243,11 @@ module GipAN
           }
         end
 
-        def representation root, ext, embed
+        def representation root, ext, embed, context
           {
             uri: uri(root, ext),
             count: length,
-            items: map { |item| item.representation(root, ext, embed) }
+            items: map { |item| item.representation(root, ext, embed, context) }
           }
         end
       end
@@ -262,13 +262,13 @@ module GipAN
 
       api.get(/^#{collection_uri}#{FormatRegex}$/) do
         entities = yield(params)
-        render(entities.representation(uri("", format), format, false))
+        render(entities.representation(uri("", format), format, false, :default))
       end
 
       api.get(/^#{entity_uri}#{FormatRegex}$/) do
         entity = yield(params).get(params["#{singular_name}_id".to_sym])
         if entity
-          render(entity.representation(uri("", format), format, false))
+          render(entity.representation(uri("", format), format, false, :default))
         else
           halt 404
         end
@@ -279,7 +279,7 @@ module GipAN
           entity = yield(params).get(params["#{singular_name}_id".to_sym])
           if entity
             data = api.parse_post request
-            entity.update(Hash[
+            entity.attributes = Hash[
               resource.properties.select { |property| property.writer_visibility == :public }.map do |property|
                 [ property.name, data[property.name.to_s] ]
               end + resource.relationships.map do |relationship|
@@ -289,8 +289,9 @@ module GipAN
                   [ relationship.name, relationship.target_model.get(data["#{relationship.name}_id"]) ]
                 end
               end.compact
-            ])
-            render(entity.representation(uri, format, false))
+            ]
+            entity.save(:update)
+            render(entity.representation(uri, format, false, :update))
           else
             halt 404
           end
@@ -299,11 +300,14 @@ module GipAN
         api.delete(/^#{entity_uri}#{FormatRegex}$/) do
           entity = yield(params).get(params["#{singular_name}_id".to_sym])
           if entity
-            if entity.destroy
-              status 204
+            if entity.valid?(:destroy)
+              if entity.destroy
+                status 204
+              else
+                status 409
+              end
             else
-              status 409
-              # TODO: return messages about why the entity could not be destroyed
+              render(entity.representation(uri, format, false, :destroy))
             end
           else
             halt 404
@@ -312,7 +316,7 @@ module GipAN
 
         api.post(/^#{collection_uri}#{FormatRegex}$/) do
           data = JSON.parse request.body.read
-          entity = yield(params).create(Hash[
+          entity = yield(params).new(Hash[
             resource.properties.select { |property| property.writer_visibility == :public }.map do |property|
               [ property.name, data[property.name.to_s] ]
             end + resource.relationships.map do |relationship|
@@ -323,9 +327,10 @@ module GipAN
               end
             end.compact
           ])
+          entity.save(:create)
           status 201
           headers 'Location' => entity.uri(uri, format)
-          render(entity.representation(uri, format, false))
+          render(entity.representation(uri, format, false, :create))
         end
       end
 
@@ -343,7 +348,7 @@ module GipAN
           api.get(/#{entity_uri}\/#{Regexp.escape(relationship.name)}#{FormatRegex}/) do
             entity = yield(params).get(params["#{singular_name}_id".to_sym])
             if entity
-              render(relationship.get(entity).representation(uri, format, false))
+              render(relationship.get(entity).representation(uri, format, false, :default))
             else
               halt 404
             end
