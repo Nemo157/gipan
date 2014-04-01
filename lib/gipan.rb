@@ -131,7 +131,7 @@ module GipAN
     end
 
     def representation root, ext, embed, context
-      if valid? context
+      if valid? && valid?(context)
         min_representation(root, ext).tap do |repr|
           properties.select { |property| property.reader_visibility == :public }.each do |property|
             repr[property.name] = property.get(self)
@@ -290,7 +290,9 @@ module GipAN
                 end
               end.compact
             ]
-            entity.save(:update)
+            if (entity.valid? && entity.valid?(:update))
+              entity.save(:update)
+            end
             render(entity.representation(uri, format, false, :update))
           else
             halt 404
@@ -327,7 +329,9 @@ module GipAN
               end
             end.compact
           ])
-          entity.save(:create)
+          if (entity.valid? && entity.valid?(:create))
+            entity.save(:create)
+          end
           status 201
           headers 'Location' => entity.uri(uri, format)
           render(entity.representation(uri, format, false, :create))
